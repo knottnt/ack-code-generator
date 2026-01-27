@@ -1927,12 +1927,10 @@ func SetResourceForStruct(
 				sourceMemberShapeRef = fp.ShapeRef(sourceShapeRef)
 				if sourceMemberShapeRef != nil && sourceMemberShapeRef.Shape != nil {
 					name := names.New(sourceMemberShapeRef.LocationName)
-					if len(sourceShape.MemberRefs) > 0 {
-						for s, sh := range sourceShape.MemberRefs {
-							name = names.New(s)
-							sourceMemberShapeRef = sh
-						}
+					if sourceMemberShapeRef.LocationName == "" {
+						name = names.New(sourceMemberShapeRef.OriginalMemberName)
 					}
+
 					sourceAdaptedVarName = sourceVarName + "." + name.Camel
 					if sourceShape.IsEnum() {
 						out += fmt.Sprintf(
