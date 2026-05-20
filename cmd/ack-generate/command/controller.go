@@ -24,6 +24,7 @@ import (
 
 	ackgenerate "github.com/aws-controllers-k8s/code-generator/pkg/generate/ack"
 	ackmetadata "github.com/aws-controllers-k8s/code-generator/pkg/metadata"
+	ackmodel "github.com/aws-controllers-k8s/code-generator/pkg/model"
 	"github.com/aws-controllers-k8s/code-generator/pkg/sdk"
 	"github.com/aws-controllers-k8s/code-generator/pkg/util"
 )
@@ -107,6 +108,32 @@ func generateController(cmd *cobra.Command, args []string) error {
 		}
 	}
 	util.Tracef("file writing (%d files): %s\n", len(ts.Executed()), time.Since(writeStart))
+
+	if err := saveAdoptionMetadata(m, svcAlias); err != nil {
+		return err
+	}
+
 	util.Tracef("generateController total: %s\n", time.Since(cmdStart))
+	return nil
+}
+
+// saveAdoptionMetadata generates and writes adoption-metadata.json alongside
+// the controller output. This file describes which fields are needed to adopt
+// each resource.
+func saveAdoptionMetadata(m *ackmodel.Model, svcAlias string) error {
+	if optDryRun {
+		return nil
+	}
+	crds, err := m.GetCRDs()
+	if err != nil {
+		return fmt.Errorf("getting CRDs for adoption metadata: %w", err)
+	}
+
+	meta := ackmetadata.GenerateAdoptionMetadata(svcAlias, crds)
+	outPath := filepath.Join(optOutputPath, "adoption-metadata.json")
+	if err := ackmetadata.WriteAdoptionMetadata(outPath, meta); err != nil {
+		return fmt.Errorf("writing adoption metadata: %w", err)
+	}
+	util.Tracef("wrote adoption-metadata.json\n")
 	return nil
 }
