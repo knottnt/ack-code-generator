@@ -19,6 +19,7 @@ import (
 	"os"
 	"strings"
 
+	ackgenconfig "github.com/aws-controllers-k8s/code-generator/pkg/config"
 	"github.com/aws-controllers-k8s/code-generator/pkg/generate/code"
 	"github.com/aws-controllers-k8s/code-generator/pkg/model"
 )
@@ -33,6 +34,7 @@ type AdoptionMetadata struct {
 type AdoptionResource struct {
 	Kind              string          `json:"kind"`
 	Adoptable         bool            `json:"adoptable"`
+	Note              string          `json:"note,omitempty"`
 	PrimaryIdentifier *AdoptionField  `json:"primaryIdentifier,omitempty"`
 	AdditionalKeys    []AdoptionField `json:"additionalKeys,omitempty"`
 }
@@ -42,6 +44,8 @@ type AdoptionField struct {
 	FieldName string `json:"fieldName"`
 	Location  string `json:"location"` // "spec", "status", or "metadata"
 	Type      string `json:"type"`     // "name", "id", "arn"
+	Required  bool   `json:"required"`
+	Note      string `json:"note,omitempty"`
 }
 
 // GenerateAdoptionMetadata inspects all CRDs in the model and produces
@@ -91,29 +95,68 @@ func buildAdoptionResource(crd *model.CRD) AdoptionResource {
 		return res
 	}
 
+	// Load documentation overrides for adoption
+	var adoptionDocs *ackgenconfig.AdoptionDocsConfig
+	if docCfg := crd.DocConfig(); docCfg != nil {
+		adoptionDocs = docCfg.Adoption
+	}
+
+	if adoptionDocs != nil && adoptionDocs.Note != "" {
+		res.Note = adoptionDocs.Note
+	}
+
 	if fields.IsARNPrimary {
 		res.PrimaryIdentifier = &AdoptionField{
 			FieldName: "arn",
 			Location:  "metadata",
 			Type:      "arn",
+			Required:  true,
 		}
 		return res
 	}
 
 	for _, id := range fields.Identifiers {
+		fieldDoc := getFieldDocOverride(adoptionDocs, id.FieldName)
+
+		if fieldDoc != nil && fieldDoc.Hidden {
+			continue
+		}
+
+		required := id.Required
+		if fieldDoc != nil && fieldDoc.Required != nil {
+			required = *fieldDoc.Required
+		}
+
+		note := ""
+		if fieldDoc != nil {
+			note = fieldDoc.Note
+		}
+
 		af := AdoptionField{
 			FieldName: id.FieldName,
 			Location:  locationString(id.InSpec),
 			Type:      classifyFieldType(id.Field.Names.Original),
+			Required:  required,
+			Note:      note,
 		}
 		if id.IsPrimary {
 			res.PrimaryIdentifier = &af
-		} else if id.Required {
+		} else {
 			res.AdditionalKeys = append(res.AdditionalKeys, af)
 		}
 	}
 
 	return res
+}
+
+func getFieldDocOverride(
+	adoptionDocs *ackgenconfig.AdoptionDocsConfig,
+	fieldName string,
+) *ackgenconfig.AdoptionFieldDocsConfig {
+	if adoptionDocs == nil || adoptionDocs.Fields == nil {
+		return nil
+	}
+	return adoptionDocs.Fields[fieldName]
 }
 
 func locationString(inSpec bool) string {
