@@ -1369,155 +1369,68 @@ func PopulateResourceFromAnnotation(
 	// Number of levels of indentation to use
 	indentLevel int,
 ) (string, error) {
-	op := r.Ops.ReadOne
-	if op == nil {
-		switch {
-		case r.Ops.GetAttributes != nil:
-			// If single lookups can only be done with GetAttributes
-			op = r.Ops.GetAttributes
-		case r.Ops.ReadMany != nil:
-			// If single lookups can only be done using ReadMany
-			op = r.Ops.ReadMany
-		default:
-			return "", nil
-		}
+	fields, err := GetAdoptionFields(cfg, r)
+	if err != nil {
+		return "", err
 	}
-	inputShape := op.InputRef.Shape
-	if inputShape == nil {
+	if fields == nil {
 		return "", nil
+	}
+
+	indent := strings.Repeat("\t", indentLevel)
+
+	if fields.IsARNPrimary {
+		out := "\n"
+		out += requiredFieldGuardContructor("resourceARN", sourceVarName, "arn", indentLevel)
+		out += "\n"
+		out += ackResourceMetadataGuardConstructor(fmt.Sprintf("%s.Status", targetVarName), indentLevel)
+		out += fmt.Sprintf(
+			"%sarn := ackv1alpha1.AWSResourceName(resourceARN)\n",
+			indent,
+		)
+		out += fmt.Sprintf(
+			"%s%s.Status.ACKResourceMetadata.ARN = &arn\n",
+			indent, targetVarName,
+		)
+		return out, nil
 	}
 
 	primaryKeyOut := ""
 	additionalKeyOut := "\n"
-
-	indent := strings.Repeat("\t", indentLevel)
-	arnOut := "\n"
 	out := "\n"
-	// Check if the CRD defines the primary keys
-	primaryKeyConditionalOut := "\n"
-	primaryKeyConditionalOut += requiredFieldGuardContructor("resourceARN", sourceVarName, "arn", indentLevel)
-	arnOut += ackResourceMetadataGuardConstructor(fmt.Sprintf("%s.Status", targetVarName), indentLevel)
-	arnOut += fmt.Sprintf(
-		"%sarn := ackv1alpha1.AWSResourceName(resourceARN)\n",
-		indent,
-	)
-	arnOut += fmt.Sprintf(
-		"%s%s.Status.ACKResourceMetadata.ARN = &arn\n",
-		indent, targetVarName,
-	)
-	if r.IsARNPrimaryKey() {
-		return primaryKeyConditionalOut + arnOut, nil
-	}
-	primaryField, err := r.GetPrimaryKeyField()
-	if err != nil {
-		return "", err
-	}
 
-	var primaryCRField, primaryShapeField string
-	isPrimarySet := primaryField != nil
-	if isPrimarySet {
-		memberPath, _ := findFieldInCR(cfg, r, primaryField.Names.Original)
-		primaryKeyOut += requiredFieldGuardContructor("primaryKey", sourceVarName, primaryField.Names.CamelLower, indentLevel)
-		targetVarPath := fmt.Sprintf("%s%s", targetVarName, memberPath)
-		primaryKeyOut += setResourceIdentifierPrimaryIdentifierAnn(
-			"&primaryKey",
-			primaryField,
-			targetVarPath,
-			indentLevel,
-		)
-	} else {
-		var findErr error
-		primaryCRField, primaryShapeField, findErr = FindPrimaryIdentifierFieldNames(cfg, r, op)
-		if findErr != nil {
-			return "", findErr
+	for idx, id := range fields.Identifiers {
+		memberPath := cfg.PrefixConfig.StatusField
+		if id.InSpec {
+			memberPath = cfg.PrefixConfig.SpecField
 		}
-		if primaryShapeField == PrimaryIdentifierARNOverride {
-			return primaryKeyConditionalOut + arnOut, nil
-		}
-	}
-
-	paginatorFieldLookup := []string{
-		"NextToken",
-		"MaxResults",
-	}
-
-	for memberIndex, memberName := range inputShape.MemberNames() {
-		if util.InStrings(memberName, paginatorFieldLookup) {
-			continue
-		}
-
-		inputShapeRef := inputShape.MemberRefs[memberName]
-		inputMemberShape := inputShapeRef.Shape
-
-		// Only strings and list of strings are currently accepted as valid
-		// inputs for additional key fields
-		if inputMemberShape.Type != "string" &&
-			(inputMemberShape.Type != "list" ||
-				inputMemberShape.MemberRef.Shape.Type != "string") {
-			continue
-		}
-
-		if r.IsSecretField(memberName) {
-			// Secrets cannot be used as fields in identifiers
-			continue
-		}
-
-		if r.IsPrimaryARNField(memberName) {
-			continue
-		}
-
-		// Handles field renames, if applicable
-		fieldName := cfg.GetResourceFieldName(
-			r.Names.Original,
-			op.ExportedName,
-			memberName,
-		)
-
-		// Check to see if we've already set the field as the primary identifier
-		if isPrimarySet && fieldName == primaryField.Names.Camel {
-			continue
-		}
-
-		isPrimaryIdentifier := fieldName == primaryShapeField
-
-		searchField := ""
-		if isPrimaryIdentifier {
-			searchField = primaryCRField
-		} else {
-			searchField = fieldName
-		}
-
-		memberPath, targetField := findFieldInCR(cfg, r, searchField)
-		if targetField == nil || (isPrimarySet && targetField == primaryField) {
-			continue
-		}
-
-		switch targetField.ShapeRef.Shape.Type {
-		case "list", "structure", "map":
-			return "", fmt.Errorf(
-				"resource %q: primary identifier %q must be a scalar type since NameOrID is a string",
-				r.Names.Original, targetField.Path,
-			)
-		}
-
 		sourceVarPath := fmt.Sprintf("%s%s", targetVarName, memberPath)
-		if inputShape.IsRequired(memberName) || isPrimaryIdentifier {
-			requiredFieldVarName := fmt.Sprintf("f%d", memberIndex)
-			primaryKeyOut += requiredFieldGuardContructor(requiredFieldVarName, sourceVarName, targetField.Names.CamelLower, indentLevel)
+
+		if id.PrimaryFromConfig {
+			primaryKeyOut += requiredFieldGuardContructor("primaryKey", sourceVarName, id.FieldName, indentLevel)
 			primaryKeyOut += setResourceIdentifierPrimaryIdentifierAnn(
-				fmt.Sprintf("&%s", requiredFieldVarName),
-				targetField,
+				"&primaryKey",
+				id.Field,
+				sourceVarPath,
+				indentLevel,
+			)
+		} else if id.Required {
+			varName := fmt.Sprintf("f%d", idx)
+			primaryKeyOut += requiredFieldGuardContructor(varName, sourceVarName, id.FieldName, indentLevel)
+			primaryKeyOut += setResourceIdentifierPrimaryIdentifierAnn(
+				fmt.Sprintf("&%s", varName),
+				id.Field,
 				sourceVarPath,
 				indentLevel,
 			)
 		} else {
 			additionalKeyOut += setResourceIdentifierAdditionalKeyAnn(
 				cfg, r,
-				memberIndex,
-				targetField,
+				idx,
+				id.Field,
 				sourceVarPath,
 				sourceVarName,
-				names.New(fieldName).CamelLower,
+				id.FieldName,
 				indentLevel,
 			)
 		}

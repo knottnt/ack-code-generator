@@ -1882,6 +1882,56 @@ func TestSetResource_APIGWV2_ApiMapping_PopulateResourceFromAnnotation(t *testin
 	assert.Equal(expected, got)
 }
 
+func TestSetResource_SQS_Queue_PopulateResourceFromAnnotation(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	g := testutil.NewModelForService(t, "sqs")
+
+	crd := testutil.GetCRDByName(t, g, "Queue")
+	require.NotNil(crd)
+
+	// SQS Queue has is_primary_key on QueueUrl and uses GetAttributes
+	// (no ReadOne operation exists). This tests the GetAttributes fallback path.
+	expected := `
+	primaryKey, ok := fields["queueURL"]
+	if !ok {
+		return ackerrors.NewTerminalError(fmt.Errorf("required field missing: queueURL"))
+	}
+	r.ko.Status.QueueURL = &primaryKey
+
+`
+	got, err := code.PopulateResourceFromAnnotation(crd.Config(), crd, "fields", "r.ko", 1)
+	require.NoError(err)
+	assert.Equal(expected, got)
+}
+
+func TestSetResource_EC2_SecurityGroup_PopulateResourceFromAnnotation(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	g := testutil.NewModelForService(t, "ec2")
+
+	crd := testutil.GetCRDByName(t, g, "SecurityGroup")
+	require.NotNil(crd)
+
+	// EC2 SecurityGroup has no ReadOne and no GetAttributes, so it falls
+	// back to ReadMany (DescribeSecurityGroups). The input shape has
+	// pluralized identifier fields (GroupIds/GroupNames). This tests the
+	// ReadMany fallback path.
+	expected := `
+	f0, ok := fields["id"]
+	if !ok {
+		return ackerrors.NewTerminalError(fmt.Errorf("required field missing: id"))
+	}
+	r.ko.Status.ID = &f0
+
+`
+	got, err := code.PopulateResourceFromAnnotation(crd.Config(), crd, "fields", "r.ko", 1)
+	require.NoError(err)
+	assert.Equal(expected, got)
+}
+
 func TestSetResource_IAM_Role_NestedSetConfig(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
