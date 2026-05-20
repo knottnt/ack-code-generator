@@ -1,0 +1,10 @@
+resources:
+  FargateProfile:
+    adoption:
+      note: "ClusterName must match the cluster the controller is managing."
+      fields:
+        clusterName:
+          note: "The EKS cluster name. Must match the controller's configured cluster."
+        name:
+          required: false
+          note: "Optional when using ARN-based adoption."

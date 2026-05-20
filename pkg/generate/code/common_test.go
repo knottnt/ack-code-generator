@@ -237,6 +237,125 @@ func TestFindPluralizedIdentifiersInShape_EC2_SG_ReadMany_Rename(t *testing.T) {
 	assert.Equal(expShapeIdentifier, shapeIdentifier)
 }
 
+func TestGetAdoptionFields_SNS_Topic_ARNPrimaryKey(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	g := testutil.NewModelForService(t, "sns")
+	crd := testutil.GetCRDByName(t, g, "Topic")
+	require.NotNil(crd)
+
+	fields, err := code.GetAdoptionFields(crd.Config(), crd)
+	require.NoError(err)
+	require.NotNil(fields)
+
+	assert.True(fields.IsARNPrimary)
+	assert.Empty(fields.Identifiers)
+}
+
+func TestGetAdoptionFields_SQS_Queue_GetAttributesFallback(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	g := testutil.NewModelForService(t, "sqs")
+	crd := testutil.GetCRDByName(t, g, "Queue")
+	require.NotNil(crd)
+
+	fields, err := code.GetAdoptionFields(crd.Config(), crd)
+	require.NoError(err)
+	require.NotNil(fields)
+
+	assert.False(fields.IsARNPrimary)
+	require.Len(fields.Identifiers, 1)
+
+	primary := fields.Identifiers[0]
+	assert.Equal("queueURL", primary.FieldName)
+	assert.True(primary.IsPrimary)
+	assert.True(primary.PrimaryFromConfig)
+	assert.True(primary.Required)
+	assert.False(primary.InSpec)
+}
+
+func TestGetAdoptionFields_EC2_SecurityGroup_ReadManyFallback(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	g := testutil.NewModelForService(t, "ec2")
+	crd := testutil.GetCRDByName(t, g, "SecurityGroup")
+	require.NotNil(crd)
+
+	fields, err := code.GetAdoptionFields(crd.Config(), crd)
+	require.NoError(err)
+	require.NotNil(fields)
+
+	assert.False(fields.IsARNPrimary)
+	require.Len(fields.Identifiers, 1)
+
+	primary := fields.Identifiers[0]
+	assert.Equal("id", primary.FieldName)
+	assert.True(primary.IsPrimary)
+	assert.False(primary.PrimaryFromConfig)
+	assert.True(primary.Required)
+	assert.False(primary.InSpec)
+}
+
+func TestGetAdoptionFields_APIGatewayV2_Api_ReadOne(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	g := testutil.NewModelForService(t, "apigatewayv2")
+	crd := testutil.GetCRDByName(t, g, "Api")
+	require.NotNil(crd)
+
+	fields, err := code.GetAdoptionFields(crd.Config(), crd)
+	require.NoError(err)
+	require.NotNil(fields)
+
+	assert.False(fields.IsARNPrimary)
+	require.NotEmpty(fields.Identifiers)
+
+	// ApiId should be the primary identifier (from ReadOne input shape)
+	var primary *code.AdoptionIdentifier
+	for i := range fields.Identifiers {
+		if fields.Identifiers[i].IsPrimary {
+			primary = &fields.Identifiers[i]
+			break
+		}
+	}
+	require.NotNil(primary, "expected a primary identifier")
+	assert.Equal("apiID", primary.FieldName)
+	assert.True(primary.Required)
+	assert.False(primary.InSpec)
+}
+
+func TestGetAdoptionFields_EC2_VPC_ReadManyPluralizedID(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	g := testutil.NewModelForService(t, "ec2")
+	crd := testutil.GetCRDByName(t, g, "Vpc")
+	require.NotNil(crd)
+
+	fields, err := code.GetAdoptionFields(crd.Config(), crd)
+	require.NoError(err)
+	require.NotNil(fields)
+
+	assert.False(fields.IsARNPrimary)
+	require.NotEmpty(fields.Identifiers)
+
+	var primary *code.AdoptionIdentifier
+	for i := range fields.Identifiers {
+		if fields.Identifiers[i].IsPrimary {
+			primary = &fields.Identifiers[i]
+			break
+		}
+	}
+	require.NotNil(primary, "expected a primary identifier")
+	assert.Equal("vpcID", primary.FieldName)
+	assert.True(primary.Required)
+	assert.False(primary.InSpec)
+}
+
 func TestGetMemberIndex_EC2_DHCPOptions_ReadMany(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)

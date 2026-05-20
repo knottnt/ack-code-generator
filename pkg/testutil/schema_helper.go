@@ -62,13 +62,13 @@ func NewModelForServiceWithOptions(t *testing.T, servicePackageName string, opti
 	if err != nil {
 		t.Fatal(err)
 	}
-	// We have subdirectories in pkg/generate and pkg/model that rely on the testdata
-	// in pkg/generate. This code simply detects if we're running from one of
-	// those subdirectories and if so, rebuilds the path to the API model files
-	// in pkg/generate/testdata
+	// We have subdirectories in pkg/generate, pkg/model, and pkg/metadata that
+	// rely on the testdata in pkg/testdata. This code simply detects if we're
+	// running from one of those subdirectories and if so, rebuilds the path to
+	// the API model files in pkg/testdata
 	pathParts := strings.Split(path, "/")
 	for x, pathPart := range pathParts {
-		if pathPart == "generate" || pathPart == "model" {
+		if pathPart == "generate" || pathPart == "model" || pathPart == "metadata" {
 			path = filepath.Join(pathParts[0:x]...)
 			path = filepath.Join("/", path, "testdata")
 			break
