@@ -128,8 +128,6 @@ func (r *CRD) TypeRenames() map[string]string {
 	return r.sdkAPI.GetTypeRenames(r.cfg)
 }
 
-// Documentation returns the base documentation string for the API formatted as
-// a Go code comment block
 // DocConfig returns the documentation configuration for this CRD's resource,
 // or nil if none is configured.
 func (r *CRD) DocConfig() *ackgenconfig.ResourceDocsConfig {
@@ -143,6 +141,8 @@ func (r *CRD) DocConfig() *ackgenconfig.ResourceDocsConfig {
 	return rc
 }
 
+// Documentation returns the base documentation string for the API formatted as
+// a Go code comment block
 func (r *CRD) Documentation() string {
 	docString := fmt.Sprintf("// %sSpec defines the desired state of %s.", r.Names.Original, r.Names.Original)
 	shape, ok := r.sdkAPI.API.Shapes[r.Names.Original]
