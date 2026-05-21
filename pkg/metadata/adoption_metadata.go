@@ -22,6 +22,7 @@ import (
 	ackgenconfig "github.com/aws-controllers-k8s/code-generator/pkg/config"
 	"github.com/aws-controllers-k8s/code-generator/pkg/generate/code"
 	"github.com/aws-controllers-k8s/code-generator/pkg/model"
+	"github.com/aws-controllers-k8s/code-generator/pkg/util"
 )
 
 // AdoptionMetadata is the top-level structure written to adoption-metadata.json.
@@ -91,7 +92,11 @@ func buildAdoptionResource(crd *model.CRD) AdoptionResource {
 	}
 
 	fields, err := code.GetAdoptionFields(crd.Config(), crd)
-	if err != nil || fields == nil {
+	if err != nil {
+		util.Infof("could not determine adoption fields for %s: %v\n", crd.Names.Camel, err)
+		return res
+	}
+	if fields == nil {
 		return res
 	}
 
@@ -168,10 +173,10 @@ func locationString(inSpec bool) string {
 
 func classifyFieldType(originalName string) string {
 	lower := strings.ToLower(originalName)
-	if strings.Contains(lower, "arn") {
+	if strings.HasSuffix(lower, "arn") || strings.Contains(lower, "arn_") {
 		return "arn"
 	}
-	if strings.Contains(lower, "id") {
+	if strings.HasSuffix(lower, "id") || strings.HasSuffix(lower, "ids") || strings.Contains(lower, "id_") {
 		return "id"
 	}
 	return "name"
